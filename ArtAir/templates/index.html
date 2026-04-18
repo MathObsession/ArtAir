@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArtAir</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">  
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Poppins';
+            background: #040404;
+            color: #fdfdfd;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .container { 
+            text-align: center; 
+            max-width: 1200px; 
+            width: 100%; }
+        h1 {
+            font-size: 90px; 
+            }
+        p { 
+            font-size: 30px;
+            opacity: 0.7;
+        }
+        .video-container {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            background: #000;
+        }
+        #processedImg { 
+            display: block; 
+            width: 100%; 
+            height: auto; }
+        #drawCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        #toolbar {
+            position: absolute;
+            max-height: 70px;
+            top: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            padding: 5px;
+            background: rgba(0, 0, 0, 0.363);
+            flex-wrap: wrap;
+            z-index: 10;
+        }
+        .color-btn {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: 2px;
+            border-color: #00000000;
+            cursor: pointer;
+
+        }
+        .color-btn.active {
+            border-color: #fff; 
+            transform: scale(1.15); 
+        }
+        .shape-btn, .eraser-btn {
+            padding: 3px 6px;
+            border-radius: 4px;
+            border: 1px solid transparent;
+            background: #3a3a4e;
+            color: #fff;
+            cursor: pointer;
+            font-size: 10px;
+            max-height: 35px;
+        }
+        .shape-btn.active { border-color: #fff; background: #5a5a7e; }
+        .eraser-btn.active { border-color: #fff; background: #7a5a5a; }
+        .thickness-wrap { display: flex; align-items: center; gap: 3px; font-size: 10px; }
+        .thickness-wrap input { width: 40px; }
+        .status {
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #4caf50;
+            box-shadow: 0 0 10px #4caf50;
+        }
+        button {
+            background: #3f51b5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .error { color: #ff6b6b; margin-top: 10px; font-size: 14px; }
+
+        #colorPalette, #shapePalette {
+            display: flex;
+            gap: 6px;
+        }
+
+    </style>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>ArtAir</h1>
+        <p>Enable Camera Access to use AR whiteboard</p>
+        <div class="video-container" id="videoContainer">
+            <img id="processedImg" alt="Processed stream">
+            <canvas id="drawCanvas"></canvas>
+            <div id="toolbar">
+                <div id="colorPalette">
+                    <div class="color-btn active" data-color="#000" style="background:#000;"></div>
+                    <div class="color-btn" data-color="#f00" style="background:#f00;"></div>
+                    <div class="color-btn" data-color="#0f0" style="background:#0f0;"></div>
+                    <div class="color-btn" data-color="#00f" style="background:#00f;"></div>
+                    <div class="color-btn" data-color="#ff0" style="background:#ff0;"></div>
+                    <div class="color-btn" data-color="#f0f" style="background:#f0f;"></div>
+                    <div class="color-btn" data-color="#0ff" style="background:#0ff;"></div>
+                    <div class="color-btn" data-color="#f80" style="background:#f80;"></div>
+                    <div class="color-btn" data-color="#80f" style="background:#80f;"></div>
+                    <div class="color-btn" data-color="#fff" style="background:#fff;border:1px solid #888;"></div>
+                </div>
+                <div id="shapePalette">
+                    <button class="shape-btn active" data-shape="free">Draw</button>
+                    <button class="shape-btn" data-shape="circle">○</button>
+                    <button class="shape-btn" data-shape="square">□</button>
+                    <button class="shape-btn" data-shape="triangle">△</button>
+                </div>
+                <button class="eraser-btn" id="eraserBtn">Eraser</button>
+                <div class="thickness-wrap">
+                    <span>Size:</span>
+                    <input type="range" id="thicknessSlider" min="1" max="20" value="4">
+                </div>
+            </div>
+        </div>
+        <div class="status">
+            <span class="indicator"></span>
+            <span id="statusText">Click "Start Camera"</span>
+        </div>
+        <div>
+            <button id="startBtn">Start Camera</button>
+            <button id="clearBtn">Clear</button>
+            <button id="fullscreenBtn">Fullscreen</button>
+            <button id="mirrorBtn">Mirror: ON</button>
+        </div>
+        <div id="errorMessage" class="error"></div>
+    </div>
+
+    <video id="video" autoplay playsinline style="display:none;"></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <script>
+        (function() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const processedImg = document.getElementById('processedImg');
+            const drawCanvas = document.getElementById('drawCanvas');
+            const drawCtx = drawCanvas.getContext('2d');
+            const videoContainer = document.getElementById('videoContainer');
+            const toolbar = document.getElementById('toolbar');
+            const colorPalette = document.getElementById('colorPalette');
+            const shapePalette = document.getElementById('shapePalette');
+            const eraserBtn = document.getElementById('eraserBtn');
+            const thicknessSlider = document.getElementById('thicknessSlider');
+            const statusText = document.getElementById('statusText');
+            const errorDiv = document.getElementById('errorMessage');
+            const startBtn = document.getElementById('startBtn');
+            const clearBtn = document.getElementById('clearBtn');
+            const fullscreenBtn = document.getElementById('fullscreenBtn');
+            const mirrorBtn = document.getElementById('mirrorBtn');
+
+            let socket = null;
+            let streaming = false;
+            let animationFrame = null;
+            let frameCounter = 0;
+            let lastPoint = null;
+            let canvasW = 0;
+            let canvasH = 0;
+            let currentColor = '#000';
+            let currentShape = 'free';
+            let isErasing = false;
+            let isMirrored = true;
+            let currentThickness = 4;
+            let drawHistory = [];
+            let currentStroke = [];
+            let lastEndedPoint = null;
+            let lastStrokeEndTime = 0;
+
+            function resizeDrawCanvas() {
+                const rect = processedImg.getBoundingClientRect();
+                drawCanvas.width = rect.width;
+                drawCanvas.height = rect.height;
+                drawCanvas.style.width = rect.width + 'px';
+                drawCanvas.style.height = rect.height + 'px';
+                canvasW = drawCanvas.width;
+                canvasH = drawCanvas.height;
+            }
+
+            function drawFromHistory() {
+                drawCtx.clearRect(0, 0, canvasW, canvasH);
+                let prevEndPoint = null;
+                drawHistory.forEach(stroke => {
+                    if (stroke.points.length < 1) return;
+                    
+                    if (prevEndPoint && stroke.points.length > 0) {
+                        const firstPoint = stroke.points[0];
+                        const dist = Math.sqrt(Math.pow(firstPoint.x - prevEndPoint.x, 2) + Math.pow(firstPoint.y - prevEndPoint.y, 2));
+                        if (dist > 5 && dist < 100) {
+                            drawCtx.strokeStyle = stroke.color;
+                            drawCtx.lineWidth = stroke.thickness;
+                            drawCtx.lineCap = 'round';
+                            drawCtx.lineJoin = 'round';
+                            drawCtx.beginPath();
+                            drawCtx.moveTo(prevEndPoint.x, prevEndPoint.y);
+                            const steps = Math.ceil(dist / 2);
+                            for (let j = 1; j <= steps; j++) {
+                                const t = j / steps;
+                                drawCtx.lineTo(
+                                    prevEndPoint.x + (firstPoint.x - prevEndPoint.x) * t,
+                                    prevEndPoint.y + (firstPoint.y - prevEndPoint.y) * t
+                                );
+                            }
+                            drawCtx.stroke();
+                        }
+                    }
+                    
+                    drawCtx.strokeStyle = stroke.color;
+                    drawCtx.lineWidth = stroke.thickness;
+                    drawCtx.lineCap = 'round';
+                    drawCtx.lineJoin = 'round';
+                    if (stroke.shape === 'free') {
+                        if (stroke.points.length < 2) return;
+                        drawCtx.beginPath();
+                        drawCtx.moveTo(stroke.points[0].x, stroke.points[0].y);
+                        for (let i = 1; i < stroke.points.length; i++) {
+                            const p0 = stroke.points[i - 1];
+                            const p1 = stroke.points[i];
+                            const dist = Math.sqrt(Math.pow(p1.x - p0.x, 2) + Math.pow(p1.y - p0.y, 2));
+                            if (dist > 5) {
+                                const steps = Math.ceil(dist / 2);
+                                for (let j = 1; j <= steps; j++) {
+                                    const t = j / steps;
+                                    drawCtx.lineTo(p0.x + (p1.x - p0.x) * t, p0.y + (p1.y - p0.y) * t);
+                                }
+                            } else {
+                                drawCtx.lineTo(p1.x, p1.y);
+                            }
+                        }
+                        drawCtx.stroke();
+                        prevEndPoint = stroke.points[stroke.points.length - 1];
+                    } else if (stroke.shape === 'circle') {
+                        const p0 = stroke.points[0];
+                        const p1 = stroke.points[stroke.points.length - 1];
+                        const r = Math.sqrt(Math.pow(p1.x - p0.x, 2) + Math.pow(p1.y - p0.y, 2));
+                        drawCtx.beginPath();
+                        drawCtx.arc(p0.x, p0.y, r, 0, Math.PI * 2);
+                        drawCtx.stroke();
+                        prevEndPoint = p1;
+                    } else if (stroke.shape === 'square') {
+                        const p0 = stroke.points[0];
+                        const p1 = stroke.points[stroke.points.length - 1];
+                        drawCtx.beginPath();
+                        drawCtx.rect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+                        drawCtx.stroke();
+                        prevEndPoint = p1;
+                    } else if (stroke.shape === 'triangle') {
+                        const p0 = stroke.points[0];
+                        const p1 = stroke.points[stroke.points.length - 1];
+                        const mx = (p0.x + p1.x) / 2;
+                        drawCtx.beginPath();
+                        drawCtx.moveTo(mx, p0.y);
+                        drawCtx.lineTo(p1.x, p1.y);
+                        drawCtx.lineTo(p0.x, p1.y);
+                        drawCtx.closePath();
+                        drawCtx.stroke();
+                        prevEndPoint = p1;
+                    }
+                });
+            }
+
+            function checkToolbarHit(x, y) {
+                const tb = toolbar.getBoundingClientRect();
+                const vc = videoContainer.getBoundingClientRect();
+                if (x >= tb.left - vc.left && x <= tb.right - vc.left &&
+                    y >= tb.top - vc.top && y <= tb.bottom - vc.top) {
+                    const colors = colorPalette.querySelectorAll('.color-btn');
+                    for (const btn of colors) {
+                        const r = btn.getBoundingClientRect();
+                        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+                            currentColor = btn.dataset.color;
+                            colorPalette.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
+                            isErasing = false;
+                            eraserBtn.classList.remove('active');
+                            return true;
+                        }
+                    }
+                    const shapes = shapePalette.querySelectorAll('.shape-btn');
+                    for (const btn of shapes) {
+                        const r = btn.getBoundingClientRect();
+                        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+                            currentShape = btn.dataset.shape;
+                            shapes.forEach(b => b.classList.remove('active'));
+                            btn.classList.add('active');
+                            return true;
+                        }
+                    }
+                    const erRect = eraserBtn.getBoundingClientRect();
+                    if (x >= erRect.left && x <= erRect.right && y >= erRect.top && y <= erRect.bottom) {
+                        isErasing = !isErasing;
+                        eraserBtn.classList.toggle('active', isErasing);
+                        return true;
+                    }
+                    const sRect = thicknessSlider.getBoundingClientRect();
+                    if (x >= sRect.left && x <= sRect.right && y >= sRect.top && y <= sRect.bottom) {
+                        const ratio = (x - sRect.left) / sRect.width;
+                        currentThickness = Math.round(1 + ratio * 19);
+                        thicknessSlider.value = currentThickness;
+                        return true;
+                    }
+                    return true;
+                }
+                return false;
+            }
+
+            function removeStrokeAtPoint(x, y) {
+                const thr = currentThickness + 15;
+                for (let i = drawHistory.length - 1; i >= 0; i--) {
+                    for (const pt of drawHistory[i].points) {
+                        if (Math.abs(pt.x - x) < thr && Math.abs(pt.y - y) < thr) {
+                            drawHistory.splice(i, 1);
+                            drawFromHistory();
+                            return;
+                        }
+                    }
+                }
+            }
+
+            function connectSocket() {
+                socket = io.connect(window.location.origin);
+                socket.on('connect', () => { statusText.textContent = 'Connected to server'; });
+                socket.on('disconnect', () => { statusText.textContent = 'Disconnected'; });
+                socket.on('processed_frame', (data) => {
+                    processedImg.src = 'data:image/jpeg;base64,' + data.image;
+
+                    if (data.should_clear) {
+                        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                        drawHistory = [];
+                        currentStroke = [];
+                        lastPoint = null;
+                    }
+
+                    if (canvasW === 0 || canvasH === 0) {
+                        if (processedImg.naturalWidth > 0) {
+                            canvasW = processedImg.naturalWidth;
+                            canvasH = processedImg.naturalHeight;
+                            drawCanvas.width = canvasW;
+                            drawCanvas.height = canvasH;
+                        } else { return; }
+                    }
+
+                    if (data.fingertip && data.width && data.height) {
+                        const [x, y] = data.fingertip;
+                        const rawX = isMirrored ? data.width - x : x;
+                        const canvasX = Math.round((rawX / data.width) * canvasW);
+                        const canvasY = Math.round((y / data.height) * canvasH);
+
+                        if (checkToolbarHit(canvasX, canvasY)) { return; }
+
+                        if (isErasing) {
+                            if (lastPoint) { removeStrokeAtPoint(lastPoint.x, lastPoint.y); }
+                            lastPoint = { x: canvasX, y: canvasY };
+                            return;
+                        }
+
+                        if (!lastPoint) {
+                            const timeSinceLastStroke = Date.now() - lastStrokeEndTime;
+                            const gapThreshold = 300;
+                            
+                            if (lastEndedPoint && timeSinceLastStroke < gapThreshold) {
+                                const dist = Math.sqrt(Math.pow(canvasX - lastEndedPoint.x, 2) + Math.pow(canvasY - lastEndedPoint.y, 2));
+                                if (dist > 5 && dist < 100) {
+                                    currentStroke = [{ x: lastEndedPoint.x, y: lastEndedPoint.y }];
+                                    drawCtx.strokeStyle = currentColor;
+                                    drawCtx.lineWidth = currentThickness;
+                                    drawCtx.lineCap = 'round';
+                                    drawCtx.lineJoin = 'round';
+                                    drawCtx.beginPath();
+                                    drawCtx.moveTo(lastEndedPoint.x, lastEndedPoint.y);
+                                    const steps = Math.ceil(dist / 2);
+                                    for (let j = 1; j <= steps; j++) {
+                                        const t = j / steps;
+                                        drawCtx.lineTo(
+                                            lastEndedPoint.x + (canvasX - lastEndedPoint.x) * t,
+                                            lastEndedPoint.y + (canvasY - lastEndedPoint.y) * t
+                                        );
+                                    }
+                                    drawCtx.stroke();
+                                } else {
+                                    currentStroke = [{ x: canvasX, y: canvasY }];
+                                }
+                            } else {
+                                currentStroke = [{ x: canvasX, y: canvasY }];
+                            }
+                            lastEndedPoint = null;
+                        } else {
+                            currentStroke.push({ x: canvasX, y: canvasY });
+                            if (currentShape === 'free') {
+                                drawCtx.strokeStyle = currentColor;
+                                drawCtx.lineWidth = currentThickness;
+                                drawCtx.lineCap = 'round';
+                                drawCtx.lineJoin = 'round';
+                                drawCtx.beginPath();
+                                drawCtx.moveTo(lastPoint.x, lastPoint.y);
+                                const dist = Math.sqrt(Math.pow(canvasX - lastPoint.x, 2) + Math.pow(canvasY - lastPoint.y, 2));
+                                if (dist > 3) {
+                                    const steps = Math.ceil(dist / 2);
+                                    for (let j = 1; j <= steps; j++) {
+                                        const t = j / steps;
+                                        drawCtx.lineTo(
+                                            lastPoint.x + (canvasX - lastPoint.x) * t,
+                                            lastPoint.y + (canvasY - lastPoint.y) * t
+                                        );
+                                    }
+                                } else {
+                                    drawCtx.lineTo(canvasX, canvasY);
+                                }
+                                drawCtx.stroke();
+                            }
+                            if (currentStroke.length >= 3) {
+                                drawHistory.push({
+                                    color: currentColor, shape: currentShape,
+                                    thickness: currentThickness, points: [...currentStroke]
+                                });
+                                currentStroke = [{ x: canvasX, y: canvasY }];
+                            }
+                        }
+                        lastPoint = { x: canvasX, y: canvasY };
+} else {
+                        if (currentStroke.length > 1) {
+                            drawHistory.push({
+                                color: currentColor, shape: currentShape,
+                                thickness: currentThickness, points: [...currentStroke]
+                            });
+                            lastEndedPoint = currentStroke[currentStroke.length - 1];
+                            lastStrokeEndTime = Date.now();
+                        }
+                        currentStroke = [];
+                        lastPoint = null;
+                    }
+                });
+            }
+
+            async function startCamera() {
+                errorDiv.textContent = '';
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, facingMode: 'user' }
+                    });
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        video.play();
+                        streaming = true;
+                        statusText.textContent = 'Camera active – draw with finger';
+                        startBtn.disabled = true;
+                        startBtn.textContent = 'Camera Active';
+                        startFrameCapture();
+                    };
+                } catch (err) {
+                    let msg = 'Camera access failed: ';
+                    if (err.name === 'NotAllowedError') msg += 'Permission denied.';
+                    else if (err.name === 'NotFoundError') msg += 'No camera found.';
+                    else if (err.name === 'NotReadableError') msg += 'Camera in use.';
+                    else msg += err.message;
+                    errorDiv.textContent = msg;
+                    statusText.textContent = 'Camera error';
+                }
+            }
+
+            function captureFrame() {
+                if (!streaming || !socket || !socket.connected) {
+                    animationFrame = requestAnimationFrame(captureFrame);
+                    return;
+                }
+                try {
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    if (frameCounter % (FRAME_SKIP + 1) === 0) {
+                        const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+                        socket.emit('frame', dataURL);
+                    }
+                    frameCounter++;
+                } catch (e) {}
+                animationFrame = requestAnimationFrame(captureFrame);
+            }
+
+            const ctx = canvas.getContext('2d');
+            const FRAME_SKIP = 1;
+
+            function startFrameCapture() {
+                if (animationFrame) cancelAnimationFrame(animationFrame);
+                frameCounter = 0;
+                animationFrame = requestAnimationFrame(captureFrame);
+            }
+
+            processedImg.onload = () => {
+                if (canvasW === 0 || canvasH === 0) { resizeDrawCanvas(); }
+            };
+            window.addEventListener('resize', () => {
+                if (canvasW > 0) {
+                    const tmp = document.createElement('canvas');
+                    tmp.width = drawCanvas.width;
+                    tmp.height = drawCanvas.height;
+                    tmp.getContext('2d').drawImage(drawCanvas, 0, 0);
+                    resizeDrawCanvas();
+                    drawCtx.drawImage(tmp, 0, 0);
+                }
+            });
+
+            clearBtn.addEventListener('click', () => {
+                drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                drawHistory = [];
+                currentStroke = [];
+                lastPoint = null;
+            });
+
+            fullscreenBtn.addEventListener('click', () => {
+                if (document.fullscreenElement) { document.exitFullscreen(); }
+                else { videoContainer.requestFullscreen(); }
+            });
+
+            mirrorBtn.addEventListener('click', () => {
+                isMirrored = !isMirrored;
+                mirrorBtn.textContent = isMirrored ? 'Mirror: ON' : 'Mirror: OFF';
+                processedImg.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+            });
+            processedImg.style.transform = 'scaleX(-1)';
+
+            connectSocket();
+            startBtn.addEventListener('click', startCamera);
+
+            window.addEventListener('beforeunload', () => {
+                if (animationFrame) cancelAnimationFrame(animationFrame);
+                if (video.srcObject) {
+                    video.srcObject.getTracks().forEach(t => t.stop());
+                }
+                if (socket) socket.disconnect();
+            });
+        })();
+    </script>
+</body>
+</html>
